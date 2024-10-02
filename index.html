@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>5-Minute Breathing Interval Timer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Include Bebas Neue font from Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+  <!-- Inline CSS Styles -->
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #f0f9ff;
+      font-family: 'Bebas Neue', Arial, sans-serif;
+    }
+    .timer-container {
+      text-align: center;
+    }
+    .phase {
+      font-size: 1.2rem;
+      margin-bottom: 15px;
+    }
+    .countdown {
+      font-size: 3rem;
+    }
+    .session-timer {
+      font-size: 0.9rem;
+      margin-bottom: 15px;
+    }
+    .circle {
+      position: relative;
+      width: 180px;
+      height: 180px;
+      margin: 0 auto 15px;
+    }
+    .circle svg {
+      transform: rotate(-90deg);
+    }
+    .circle circle {
+      fill: none;
+      stroke-width: 12;
+      stroke-linecap: round;
+    }
+    .background-circle {
+      stroke: #e0e0e0;
+    }
+    .progress-circle {
+      stroke: #00b4d8;
+      stroke-dasharray: 565; /* Updated for smaller circle */
+      stroke-dashoffset: 565;
+      transition: stroke-dashoffset 0.1s linear;
+    }
+    .circle .countdown {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .controls button {
+      padding: 8px 16px;
+      margin: 0 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-family: 'Bebas Neue', Arial, sans-serif;
+    }
+    .start-button {
+      background-color: #48bb78;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+    }
+    .pause-button, .resume-button {
+      background-color: #ed8936;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+    }
+    .reset-button {
+      background-color: #e53e3e;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+    }
+    .set-durations {
+      margin-bottom: 15px;
+    }
+    .set-durations p {
+      font-size: 0.8rem;
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="timer-container">
+    <div class="phase" id="phase-display">Get Ready</div>
+    <div class="circle">
+      <svg width="180" height="180">
+        <circle class="background-circle" cx="90" cy="90" r="80"></circle>
+        <circle class="progress-circle" id="progress-circle" cx="90" cy="90" r="80"></circle>
+      </svg>
+      <div class="countdown" id="countdown-display"></div>
+    </div>
+    <div class="session-timer" id="session-timer-display">Session Time: 5:00.0</div>
+
+    <!-- Display set durations -->
+    <div class="set-durations">
+      <p>Minute 1: Inhale 2s, Exhale 3s</p>
+      <p>Minute 2: Inhale 4s, Exhale 5s</p>
+      <p>Minutes 3-5: Inhale 4s, Exhale 6s</p>
+    </div>
+
+    <div class="controls">
+      <button class="start-button" id="start-button">Start</button>
+      <button class="pause-button" id="pause-button" style="display: none;">Pause</button>
+      <button class="resume-button" id="resume-button" style="display: none;">Resume</button>
+      <button class="reset-button" id="reset-button" style="display: none;">Reset</button>
+    </div>
+  </div>
+
+  <!-- JavaScript Code -->
+  <script>
+    // Adjusted circumference value for the smaller circle
+    const circleRadius = 80;
+    const circumference = 2 * Math.PI * circleRadius;
+
+    // Session time in seconds (5 minutes)
+    let sessionTimeLeft = 300.0;
+
+    // Time elapsed since the session started
+    let sessionTimeElapsed = 0.0;
+
+    // Phases and durations per minute
+    const schedule = [
+      { minute: 1, inhale: 2.0, exhale: 3.0 },
+      { minute: 2, inhale: 4.0, exhale: 5.0 },
+      { minute: 3, inhale: 4.0, exhale: 6.0 },
+      { minute: 4, inhale: 4.0, exhale: 6.0 },
+      { minute: 5, inhale: 4.0, exhale: 6.0 }
+    ];
+
+    let phases = [];
+    let totalCycleDuration = 0.0;
+    let phaseIndex = -1;
+    let timeLeft = 0.0;
+    let timerInterval;
+    let isRunning = false;
+    let cycleTimeElapsed = 0.0;
+
+    const phaseDisplay = document.getElementById('phase-display');
+    const countdownDisplay = document.getElementById('countdown-display');
+    const sessionTimerDisplay = document.getElementById('session-timer-display');
+    const progressCircle = document.getElementById('progress-circle');
+    const startButton = document.getElementById('start-button');
+    const pauseButton = document.getElementById('pause-button');
+    const resumeButton = document.getElementById('resume-button');
+    const resetButton = document.getElementById('reset-button');
+
+    function formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      const tenths = Math.floor((seconds % 1) * 10);
+      return `${mins}:${String(secs).padStart(2, '0')}.${tenths}`;
+    }
+
+    function updateDisplay() {
+      if (phaseIndex === -1) {
+        // Timer hasn't started yet
+        phaseDisplay.textContent = 'Get Ready';
+        countdownDisplay.textContent = '';
+        sessionTimerDisplay.textContent = 'Session Time: ' + formatTime(sessionTimeLeft);
+        progressCircle.style.strokeDashoffset = circumference; // Reset the circle
+        progressCircle.style.stroke = '#00b4d8'; // Default color
+      } else {
+        phaseDisplay.textContent = phases[phaseIndex].name;
+        countdownDisplay.textContent = timeLeft.toFixed(1);
+        sessionTimerDisplay.textContent = 'Session Time: ' + formatTime(sessionTimeLeft);
+        progressCircle.style.stroke = phases[phaseIndex].color;
+
+        const progress = (cycleTimeElapsed / totalCycleDuration) * circumference;
+        progressCircle.style.strokeDashoffset = circumference - (progress % circumference);
+        progressCircle.style.strokeDasharray = circumference;
+      }
+    }
+
+    function getCurrentMinute() {
+      return Math.floor(sessionTimeElapsed / 60) + 1;
+    }
+
+    function updatePhasesForCurrentMinute() {
+      const currentMinute = getCurrentMinute();
+      const scheduleItem = schedule.find(item => item.minute === currentMinute);
+      if (scheduleItem) {
+        phases = [
+          { name: 'Inhale', duration: scheduleItem.inhale, color: '#00b4d8' },
+          { name: 'Exhale', duration: scheduleItem.exhale, color: '#06d6a0' }
+        ];
+        totalCycleDuration = scheduleItem.inhale + scheduleItem.exhale;
+      }
+    }
+
+    function nextPhase() {
+      phaseIndex++;
+      if (phaseIndex >= phases.length) {
+        phaseIndex = 0;
+        cycleTimeElapsed = 0.0; // Reset cycle time when starting a new cycle
+      }
+      timeLeft = phases[phaseIndex].duration;
+      updateDisplay();
+    }
+
+    function startTimer() {
+      if (isRunning) return;
+
+      isRunning = true;
+      if (phaseIndex === -1) {
+        // Timer starting for the first time
+        sessionTimeElapsed = 0.0;
+        updatePhasesForCurrentMinute();
+        phaseIndex = 0;
+        timeLeft = phases[phaseIndex].duration;
+        updateDisplay();
+      }
+      startButton.style.display = 'none';
+      pauseButton.style.display = 'inline-block';
+      resetButton.style.display = 'inline-block';
+
+      timerInterval = setInterval(() => {
+        timeLeft -= 0.1;
+        cycleTimeElapsed += 0.1;
+        sessionTimeLeft -= 0.1;
+        sessionTimeElapsed += 0.1;
+
+        if (sessionTimeLeft <= 0) {
+          // Session time is over
+          clearInterval(timerInterval);
+          isRunning = false;
+          phaseDisplay.textContent = 'Session Complete';
+          countdownDisplay.textContent = '';
+          pauseButton.style.display = 'none';
+          resetButton.style.display = 'inline-block';
+          return;
+        }
+
+        // Check if we need to update phases for a new minute
+        const currentMinute = getCurrentMinute();
+        const previousMinute = Math.floor((sessionTimeElapsed - 0.1) / 60) + 1;
+        if (currentMinute !== previousMinute) {
+          updatePhasesForCurrentMinute();
+          phaseIndex = 0;
+          cycleTimeElapsed = 0.0;
+          timeLeft = phases[phaseIndex].duration;
+        }
+
+        if (timeLeft <= 0) {
+          nextPhase();
+        }
+        updateDisplay();
+      }, 100);
+    }
+
+    function pauseTimer() {
+      if (!isRunning) return;
+      isRunning = false;
+      clearInterval(timerInterval);
+      pauseButton.style.display = 'none';
+      resumeButton.style.display = 'inline-block';
+    }
+
+    function resumeTimer() {
+      if (isRunning) return;
+      isRunning = true;
+      pauseButton.style.display = 'inline-block';
+      resumeButton.style.display = 'none';
+      timerInterval = setInterval(() => {
+        timeLeft -= 0.1;
+        cycleTimeElapsed += 0.1;
+        sessionTimeLeft -= 0.1;
+        sessionTimeElapsed += 0.1;
+
+        if (sessionTimeLeft <= 0) {
+          // Session time is over
+          clearInterval(timerInterval);
+          isRunning = false;
+          phaseDisplay.textContent = 'Session Complete';
+          countdownDisplay.textContent = '';
+          pauseButton.style.display = 'none';
+          resetButton.style.display = 'inline-block';
+          return;
+        }
+
+        // Check if we need to update phases for a new minute
+        const currentMinute = getCurrentMinute();
+        const previousMinute = Math.floor((sessionTimeElapsed - 0.1) / 60) + 1;
+        if (currentMinute !== previousMinute) {
+          updatePhasesForCurrentMinute();
+          phaseIndex = 0;
+          cycleTimeElapsed = 0.0;
+          timeLeft = phases[phaseIndex].duration;
+        }
+
+        if (timeLeft <= 0) {
+          nextPhase();
+        }
+        updateDisplay();
+      }, 100);
+    }
+
+    function resetTimer() {
+      clearInterval(timerInterval);
+      isRunning = false;
+      phaseIndex = -1;
+      timeLeft = 0.0;
+      sessionTimeLeft = 300.0; // Reset session time to 5 minutes
+      sessionTimeElapsed = 0.0;
+      cycleTimeElapsed = 0.0;
+      updateDisplay();
+      startButton.style.display = 'inline-block';
+      pauseButton.style.display = 'none';
+      resumeButton.style.display = 'none';
+      resetButton.style.display = 'none';
+    }
+
+    startButton.addEventListener('click', () => {
+      startTimer();
+    });
+
+    pauseButton.addEventListener('click', pauseTimer);
+    resumeButton.addEventListener('click', resumeTimer);
+    resetButton.addEventListener('click', resetTimer);
+
+    // Initialize display
+    updateDisplay();
+  </script>
+</body>
+</html>
