@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Customizable Breathing Timer</title>
+  <title>Fixed Segment Breathing Timer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -48,15 +48,7 @@
       transform: scale(1.12);
     }
 
-    .circle.hold1 {
-      transform: scale(1.12);
-    }
-
     .circle.exhale {
-      transform: scale(0.8);
-    }
-
-    .circle.hold2 {
       transform: scale(0.8);
     }
 
@@ -121,46 +113,22 @@
       color: #e0e0e0;
     }
 
-    .custom-inputs {
-      margin-bottom: 20px;
-      color: #e0e0e0;
-    }
-
-    .custom-inputs label {
-      display: block;
-      margin-bottom: 5px;
-    }
-
-    .custom-inputs input {
-      width: 100px;
-      margin-bottom: 10px;
-      padding: 5px;
-      border: 1px solid #34495e;
-      border-radius: 5px;
+    .segment-info {
       font-size: 1rem;
+      margin-bottom: 20px;
+      color: #b0b0b0;
     }
   </style>
 </head>
 <body>
   <div class="timer-container">
-    <div class="custom-inputs">
-      <label for="inhale-duration">Inhale Duration (s):</label>
-      <input type="number" id="inhale-duration" step="0.1" min="0.1" value="4">
-
-      <label for="hold1-duration">First Hold Duration (s):</label>
-      <input type="number" id="hold1-duration" step="0.1" min="0.1" value="0">
-
-      <label for="exhale-duration">Exhale Duration (s):</label>
-      <input type="number" id="exhale-duration" step="0.1" min="0.1" value="4">
-
-      <label for="hold2-duration">Second Hold Duration (s):</label>
-      <input type="number" id="hold2-duration" step="0.1" min="0.1" value="0">
-    </div>
     <div class="phase" id="phase-display">Get Ready</div>
     <div class="circle" id="circle">
       <span id="circle-timer"></span>
     </div>
-    <div class="total-duration" id="total-duration-display">Total Time: 0.0</div>
+    <div class="time-left-label">Time Left:</div>
+    <div class="total-duration" id="total-duration-display">5:00</div>
+    <div class="segment-info" id="segment-info">Phase 1: Inhale for 2, Exhale for 3</div>
     <div class="controls">
       <button class="start-button" id="start-button">Start</button>
       <button class="pause-button" id="pause-button" style="display: none;">Pause</button>
@@ -169,58 +137,43 @@
   </div>
 
   <script>
-    let inhaleDuration = parseFloat(document.getElementById('inhale-duration').value);
-    let hold1Duration = parseFloat(document.getElementById('hold1-duration').value);
-    let exhaleDuration = parseFloat(document.getElementById('exhale-duration').value);
-    let hold2Duration = parseFloat(document.getElementById('hold2-duration').value);
+    const segmentDurations = [
+      { inhale: 2, exhale: 3, duration: 60, label: 'Phase 1: Inhale for 2, Exhale for 3' },
+      { inhale: 4, exhale: 5, duration: 60, label: 'Phase 2: Inhale for 4, Exhale for 5' },
+      { inhale: 4, exhale: 6, duration: 180, label: 'Phase 3: Inhale for 4, Exhale for 6' },
+    ];
 
+    const totalSessionTime = 300.0; // 5 minutes in seconds
+    let remainingSessionTime = totalSessionTime;
+    let currentSegmentIndex = 0;
     let phaseIndex = -1;
     let timeLeft = 0;
     let timerInterval;
-    let totalTimeElapsed = 0;
     let isRunning = false;
-    let currentAudio;
 
     const phaseDisplay = document.getElementById('phase-display');
     const circle = document.getElementById('circle');
     const circleTimer = document.getElementById('circle-timer');
     const totalDurationDisplay = document.getElementById('total-duration-display');
+    const segmentInfo = document.getElementById('segment-info');
     const startButton = document.getElementById('start-button');
     const pauseButton = document.getElementById('pause-button');
     const resetButton = document.getElementById('reset-button');
 
-    const phases = [
-      { name: 'Inhale', duration: inhaleDuration, class: 'inhale', sound: 'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/juLIYuEYre10CvC03A1h/pub/J8mip7lBT6vgAWHXPxTQ.mp3' },
-      { name: 'First Hold', duration: hold1Duration, class: 'hold1', sound: 'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/juLIYuEYre10CvC03A1h/pub/zLQqzZ0tp1deFSwzivtb.mp3' },
-      { name: 'Exhale', duration: exhaleDuration, class: 'exhale', sound: 'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/juLIYuEYre10CvC03A1h/pub/uJ4wEJfrddhk0AfgjR3x.mp3' },
-      { name: 'Second Hold', duration: hold2Duration, class: 'hold2', sound: 'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/juLIYuEYre10CvC03A1h/pub/zLQqzZ0tp1deFSwzivtb.mp3' },
-    ];
-
-    function updateDurations() {
-      inhaleDuration = parseFloat(document.getElementById('inhale-duration').value);
-      hold1Duration = parseFloat(document.getElementById('hold1-duration').value);
-      exhaleDuration = parseFloat(document.getElementById('exhale-duration').value);
-      hold2Duration = parseFloat(document.getElementById('hold2-duration').value);
-
-      phases[0].duration = inhaleDuration;
-      phases[1].duration = hold1Duration;
-      phases[2].duration = exhaleDuration;
-      phases[3].duration = hold2Duration;
-    }
-
     function formatTime(seconds) {
       const mins = Math.floor(seconds / 60);
       const secs = Math.floor(seconds % 60);
-      const tenths = Math.floor((seconds % 1) * 10);
-      return `${mins}:${String(secs).padStart(2, '0')}.${tenths}`;
+      return `${mins}:${String(secs).padStart(2, '0')}`;
     }
 
-    function playSound(sound) {
-      if (sound) {
-        if (currentAudio) currentAudio.pause();
-        currentAudio = new Audio(sound);
-        currentAudio.play();
-      }
+    function formatPhaseTime(seconds) {
+      const secs = Math.floor(seconds % 60);
+      const tenths = Math.floor((seconds % 1) * 10);
+      return `${secs}.${tenths}`;
+    }
+
+    function updateCircleTransitionDuration(duration) {
+      circle.style.transition = `transform ${duration}s ease-in-out`;
     }
 
     function updateDisplay() {
@@ -228,28 +181,51 @@
         phaseDisplay.textContent = 'Get Ready';
         circle.className = 'circle';
         circleTimer.textContent = '';
-        totalDurationDisplay.textContent = 'Total Time: 0.0';
+        totalDurationDisplay.textContent = formatTime(remainingSessionTime);
+        segmentInfo.textContent = segmentDurations[0].label;
       } else {
-        const currentPhase = phases[phaseIndex];
-        phaseDisplay.textContent = currentPhase.name;
-        circle.className = `circle ${currentPhase.class}`;
-        circleTimer.textContent = formatTime(timeLeft);
-        totalDurationDisplay.textContent = `Total Time: ${formatTime(totalTimeElapsed)}`;
+        const segment = segmentDurations[currentSegmentIndex];
+        const currentPhase = phaseIndex % 2 === 0 ? 'Inhale' : 'Exhale';
+        const currentDuration = phaseIndex % 2 === 0 ? segment.inhale : segment.exhale;
+        phaseDisplay.textContent = currentPhase;
+        circle.className = `circle ${currentPhase.toLowerCase()}`;
+        circleTimer.textContent = formatPhaseTime(timeLeft);
+        totalDurationDisplay.textContent = formatTime(remainingSessionTime);
+        segmentInfo.textContent = segment.label;
+        updateCircleTransitionDuration(currentDuration);
       }
     }
 
+    function playSound(phase, duration) {
+      const sounds = {
+        inhale: 'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/juLIYuEYre10CvC03A1h/pub/J8mip7lBT6vgAWHXPxTQ.mp3',
+        exhale: 'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/juLIYuEYre10CvC03A1h/pub/uJ4wEJfrddhk0AfgjR3x.mp3'
+      };
+      const audio = new Audio(sounds[phase]);
+      audio.play();
+      setTimeout(() => audio.pause(), duration * 1000);
+    }
+
     function nextPhase() {
-      phaseIndex = (phaseIndex + 1) % phases.length;
-      const currentPhase = phases[phaseIndex];
-      timeLeft = currentPhase.duration;
-      playSound(currentPhase.sound);
+      const segment = segmentDurations[currentSegmentIndex];
+      phaseIndex = (phaseIndex + 1) % 2; // Alternate between inhale and exhale
+
+      if (phaseIndex === 0) {
+        const elapsedTime = totalSessionTime - remainingSessionTime;
+        if (elapsedTime >= segment.duration) {
+          currentSegmentIndex = Math.min(currentSegmentIndex + 1, segmentDurations.length - 1);
+        }
+      }
+
+      const currentPhase = phaseIndex === 0 ? 'inhale' : 'exhale';
+      timeLeft = phaseIndex === 0 ? segmentDurations[currentSegmentIndex].inhale : segmentDurations[currentSegmentIndex].exhale;
+      playSound(currentPhase, timeLeft);
       updateDisplay();
     }
 
     function startTimer() {
       if (isRunning) return;
 
-      updateDurations();
       isRunning = true;
       startButton.style.display = 'none';
       pauseButton.style.display = 'inline-block';
@@ -257,8 +233,8 @@
 
       if (phaseIndex === -1) {
         phaseIndex = 0;
-        timeLeft = phases[0].duration;
-        playSound(phases[0].sound);
+        timeLeft = segmentDurations[0].inhale;
+        playSound('inhale', timeLeft);
         updateDisplay();
         startBreathingTimer();
       } else {
@@ -269,7 +245,17 @@
     function startBreathingTimer() {
       timerInterval = setInterval(() => {
         timeLeft -= 0.1;
-        totalTimeElapsed += 0.1;
+        remainingSessionTime -= 0.1;
+
+        if (remainingSessionTime <= 0) {
+          clearInterval(timerInterval);
+          isRunning = false;
+          phaseDisplay.textContent = 'Session Complete';
+          startButton.style.display = 'inline-block';
+          pauseButton.style.display = 'none';
+          resetButton.style.display = 'none';
+          return;
+        }
 
         if (timeLeft <= 0) {
           nextPhase();
@@ -284,7 +270,6 @@
 
       isRunning = false;
       clearInterval(timerInterval);
-      if (currentAudio) currentAudio.pause();
       pauseButton.style.display = 'none';
       startButton.textContent = 'Resume';
       startButton.style.display = 'inline-block';
@@ -292,11 +277,11 @@
 
     function resetTimer() {
       clearInterval(timerInterval);
-      if (currentAudio) currentAudio.pause();
       isRunning = false;
+      currentSegmentIndex = 0;
       phaseIndex = -1;
       timeLeft = 0;
-      totalTimeElapsed = 0;
+      remainingSessionTime = totalSessionTime;
       updateDisplay();
       startButton.textContent = 'Start';
       startButton.style.display = 'inline-block';
